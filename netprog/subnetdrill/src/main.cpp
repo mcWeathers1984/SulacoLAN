@@ -1,51 +1,82 @@
 #include <print>
+#include <string>
+#include <string_view>
+#include <iostream>
 #include "ipv4_addr.hpp"
 #include "ipv4_network.hpp"
 
+using mcw::ipv4_addr;
+using mcw::ipv4_network;
+
 int main()
 {
-    using mcw::ipv4_addr;
-    using mcw::ipv4_network;
+    std::println("==============================================");
+    std::println("        subnetdrill v0.1 - IPv4 Trainer        ");
+    std::println("==============================================");
+    std::println("Enter IPv4/CIDR (e.g. 192.168.1.141/26)");
+    std::println("Type 'q' or 'quit' to exit.\n");
 
-    ipv4_addr ip{192, 168, 1, 141};
+    std::string input;
 
-    std::println("=== ipv4_addr tests ===");
-    std::println("ip:          {}", ip);
-    std::println("ip string:   {}", ip.to_string());
-    std::println("ip binary:   {}", ip.to_binary_string());
-    std::println("ip as u32:   {}", ip.to_u32());
+    while (true)
+    {
+        std::print("> ");
+        if (!std::getline(std::cin, input))
+            break;
 
-    if (auto parsed = ipv4_addr::from_string("10.0.0.42")) {
-        std::println("parsed ok:  {}", *parsed);
-    } else {
-        std::println("parse failed");
+        // Trim whitespace
+        if (input == "q" || input == "quit")
+            break;
+        if (input.empty())
+            continue;
+
+        auto net_opt = ipv4_network::from_string(input);
+        if (!net_opt)
+        {
+            std::println("Invalid input. Example: 10.0.0.42/20");
+            continue;
+        }
+
+        ipv4_network net = *net_opt;
+
+        ipv4_addr ip        = net.address;
+        ipv4_addr mask      = net.mask();
+        ipv4_addr wildcard  = net.wildcard();
+        ipv4_addr network   = net.network_address();
+        ipv4_addr broadcast = net.broadcast_address();
+        ipv4_addr first     = net.first_host();
+        ipv4_addr last      = net.last_host();
+        ipv4_network next   = net.next_subnet();
+
+        uint32_t total      = net.total_addresses_safe();
+        uint32_t usable     = net.usable_hosts();
+
+        std::println("\n=== Results for {} ===", net.to_string());
+        std::println("IP Address:      {}", ip);
+        std::println("Binary (IP):     {}", ip.to_binary_string());
+        std::println();
+
+        std::println("Subnet Mask:     {} (/ {})", mask, net.prefix);
+        std::println("Binary (Mask):   {}", mask.to_binary_string());
+
+        // Compute block size from mask logic:
+        uint32_t block_size = total; // same as "subnet size"
+        std::println("Block Size:      {}", block_size);
+
+        std::println();
+        std::println("Network:         {}", network);
+        std::println("Broadcast:       {}", broadcast);
+        std::println("First Host:      {}", first);
+        std::println("Last Host:       {}", last);
+
+        std::println();
+        std::println("Total Addrs:     {}", total);
+        std::println("Usable Hosts:    {}", usable);
+
+        std::println("Next Subnet:     {}", next);
+        std::println("==============================================\n");
     }
 
-    std::println("\n=== ipv4_network tests ===");
-
-    // Example: 192.168.1.141/26
-    ipv4_network net{ip, 26};
-
-    std::println("network:      {}", net);
-    std::println("mask:         {}", net.mask());
-    std::println("mask (bin):   {}", net.mask().to_binary_string());
-    std::println("wildcard:     {}", net.wildcard());
-    std::println("ip (bin):     {}", ip.to_binary_string());
-    std::println("net addr:     {}", net.network_address());
-    std::println("bcast addr:   {}", net.broadcast_address());
-    std::println("first host:   {}", net.first_host());
-    std::println("last host:    {}", net.last_host());
-    std::println("total addrs:  {}", net.total_addresses_safe());
-    std::println("usable hosts: {}", net.usable_hosts());
-    std::println("next subnet:  {}", net.next_subnet());
-
-    // Quick parse test: "10.0.0.42/20"
-    if (auto net2 = ipv4_network::from_string("10.0.0.42/20")) {
-        std::println("\nparsed net:  {}", *net2);
-        std::println("mask:         {}", net2->mask());
-        std::println("network addr: {}", net2->network_address());
-        std::println("broadcast:    {}", net2->broadcast_address());
-    }
-
+    std::println("\nGood luck on those subnet drills!");
     return 0;
 }
