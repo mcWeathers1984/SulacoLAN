@@ -20,6 +20,7 @@ int main()
 
     while (true)
     {
+        mcw::print_subnet_chart();
         std::print("> ");
         if (!std::getline(std::cin, input))
             break;

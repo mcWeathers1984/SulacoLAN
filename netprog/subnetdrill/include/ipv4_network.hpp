@@ -175,7 +175,37 @@ struct ipv4_network
         return ipv4_network{ipv4_addr::from_u32(next32), prefix};
     }
 };
+using mcw::ipv4_addr;
+using mcw::ipv4_network;
 
+static void print_subnet_chart()
+{
+    // This is the mnemonic chart you’re using for practice.
+    static constexpr std::string_view chart = R"(CIDR-Start counting up at first row
+(in # Subnets col)
+/8
+/16
+/24
+
+*-----------*-----------*-----------*-----------*
+|   # of    |  Subnet   |# hosts per|   Block   |
+|  Subnets  |           |  Subnet   |   Size    |
+*===========*===========*===========*===========*
+|     8     |    255    |     8     |    256    |
+|     1     |    128    |     7     |    128    |
+|     2     |    192    |     6     |     64    |
+|     3     |    224    |     5     |     32    |
+|     4     |    240    |     4     |     16    |
+|     5     |    248    |     3     |      8    |
+|     6     |    252    |     2     |      4    |
+|     7     |    254    |     1     |      2    |
+|     8     |    255    |     0     |      1    |
+*-----------*-----------*-----------*-----------*
+)";
+
+    std::println("Subnetting reference chart:\n");
+    std::print("{}\n", chart);
+}
 } // namespace mcw
 
 // ----- formatter support for std::format / std::print -----
