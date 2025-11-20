@@ -7,6 +7,11 @@
 
 using mcw::ipv4_addr;
 using mcw::ipv4_network;
+static void clear_screen()
+{
+    // ANSI escape sequence: clear entire screen and move cursor to home.
+    std::print("\033[2J\033[H");
+}
 
 int main()
 {
@@ -15,11 +20,12 @@ int main()
     std::println("==============================================");
     std::println("Enter IPv4/CIDR (e.g. 192.168.1.141/26)");
     std::println("Type 'q' or 'quit' to exit.\n");
-
+    
     std::string input;
-
+    
     while (true)
     {
+        clear_screen();
         mcw::print_subnet_chart();
         std::print("> ");
         if (!std::getline(std::cin, input))
