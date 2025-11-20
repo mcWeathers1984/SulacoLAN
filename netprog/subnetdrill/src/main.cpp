@@ -7,14 +7,30 @@
 
 using mcw::ipv4_addr;
 using mcw::ipv4_network;
+#define USE_ANSI_CLEARSCREEN 1
+#define USE_2ND_ITER 0
 static void clear_screen()
 {
+#if(USE_ANSI_CLEARSCREEN)
     // ANSI escape sequence: clear entire screen and move cursor to home.
+    #if(USE_2ND_ITER)
+    std::print("\033[H\033[2J");
+    #else
     std::print("\033[2J\033[H");
+    #endif
+#else
+    #ifdef _WIN32
+        system("cls");
+    #else
+        system("clear");
+    #endif
+
+#endif
 }
 
 int main()
 {
+    clear_screen();
     std::println("==============================================");
     std::println("        subnetdrill v0.1 - IPv4 Trainer        ");
     std::println("==============================================");
@@ -25,7 +41,6 @@ int main()
     
     while (true)
     {
-        clear_screen();
         mcw::print_subnet_chart();
         std::print("> ");
         if (!std::getline(std::cin, input))
@@ -82,6 +97,9 @@ int main()
 
         std::println("Next Subnet:     {}", next);
         std::println("==============================================\n");
+        std::println("Press ENTER to continue.");
+        std::cin.get();
+        clear_screen();
     }
 
     std::println("\nGood luck on those subnet drills!");
