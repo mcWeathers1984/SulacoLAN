@@ -1,0 +1,20 @@
+NetworkPlus URL:
+
+https://www.udemy.com/course/total-comptia-network-n10-008/learn/lecture/49231657#content
+
+LinuxPlus URL:
+
+https://www.udemy.com/course/comptia-linux/learn/lecture/49343319?start=75#overview
+
+NetPlus document:
+
+~/dev/git/STU/STU/NetPlus/PracticeReview/NetPlus_ReviewQuestions.odt
+
+~/dev/git/STU/STU/NetPlus/PracticeReview/SubnettingPractice.odt
+
+
+LinuxPlus document:
+
+~/dev/git/STU/STU/LinuxPlus/PracticeReview/LinuxPlus_ReviewQuestions.odt
+
+

@@ -1,0 +1,87 @@
+Subnetting Practice:
+
+                                                                                             *-----------*-----------*-----------*-----------*                                            |   # of    |  Subnet   |# hosts per|   Block   |                                            |  Subnets  |           |  Subnet   |   Size    |                                            *===========*===========*===========*===========*                                            |     8     |    255    |     8     |    256    |                                            |     1     |    128    |     7     |    128    |                                            |     2     |    192    |     6     |     64    |                                            |     3     |    224    |     5     |     32    |                                            |     4     |    240    |     4     |     16    |                                            |     5     |    248    |     3     |      8    |                                            |     6     |    252    |     2     |      4    |                                            |     7     |    254    |     1     |      2    |                                            |     8     |    255    |     0     |      1    |                                            *-----------*-----------*-----------*-----------*                                                                                                                                         > 192.168.10.77/26                                     
+
+
+
+
+
+
+
+
+
+
+
+Round 1
+
+(1)	192.168.10.77/26
+interesting octet  192.168.10.77/26
+		 	    ^
+			   .10
+subnet mask
+ 1111-1111 . 1111-1111 . 1111-1111 . 1100-0000
+					192
+block size 64
+
+192.168.10.192 Network ID X
+192.168.10.255 Broadcast X
+255.255.255.192 Subnet-mask (correct)
+11111111.11111111.11111111.11000000 (correct)
+First Host 192.168.10.193 X
+Last Host  192.168.10.254 X
+
+
+
+Figure out the Chart
+				512
+/8	8	0	8	256
+/16	1	128	7	128
+/24	2	192	6	64
+	3	224	5	32
+	4	240	4	16
+	5	248	3	8	
+	6	252	2	4
+	7	254	1	2
+	8	255	0	1
+------------------------------------------------------------------
+<1>Find Interesting Octet 192.168.10.77/26
+
+* Memorize default cedar ranges
+/8	255.0.0.0
+/ 9-16  255.x			A
+/17-24  255.255.x		B
+/25-32  255.255.255.x		C
+
+
+<2>Find Subnetting Row
+note- the lady uses the cidr to find the subnetting row, um 
+you can just figure out the subnet (255.255.255.192)
+						 X so row 2
+
+<3>Find Block Size	0-64 64-128 128-192 192-256
+  find the group where value in interesting octet lives
+so 77 lives in 64 to 128
+
+	last column in the subnetting row
+
+<4>Identify Next Subnet
+	Use next block size( unless it is 256) then go up to next octet
+
+
+<5>Calculate
+
+N
+F
+L
+B
+
+
+
+                                                                                             *-----------*-----------*-----------*-----------*                                            |   # of    |  Subnet   |# hosts 0's|   Block   |                                            |  Subnets  |           |per Subnet |   Size    |                                            *===========*===========*===========*===========*                                            |           |           |           |           |                                            |           |           |           |           |                                            |           |           |           |           |                                            |           |           |           |           |                                            |           |           |           |           |                                            |           |           |           |           |                                            |           |           |           |           |                                            |           |           |           |           |                                            |           |           |           |           |                                            *-----------*-----------*-----------*-----------*                                                                                                                                         > 192.168.10.77/26                                     
+
+
+
+
+
+
+

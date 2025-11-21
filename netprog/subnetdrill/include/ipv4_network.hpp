@@ -188,10 +188,10 @@ static void print_subnet_chart()
 /24
 
 *-----------*-----------*-----------*-----------*
-|   # of    |  Subnet   |# hosts per|   Block   |
-|  Subnets  |           |  Subnet   |   Size    |
+|   # of    |  Subnet   |# hosts 0's|   Block   |
+|  Subnets  |           |per subnet |   Size    |
 *===========*===========*===========*===========*
-|     8     |    255    |     8     |    256    |
+|   0, 8    |    255    |     8     |    256    |
 |     1     |    128    |     7     |    128    |
 |     2     |    192    |     6     |     64    |
 |     3     |    224    |     5     |     32    |
