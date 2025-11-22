@@ -1,0 +1,41 @@
+#pragma once
+#include "mcw/config.hpp"
+
+#include <string_view>
+#include <utility>
+
+#if MCW_HAS_STD_PRINT
+  #include <print>
+#elif MCW_HAS_STD_FORMAT
+  #include <format>
+  #include <iostream>
+#else
+  #include <iostream>
+#endif
+
+namespace mcw {
+
+template <typename... Args>
+inline void print(std::string_view fmt, Args&&... args) {
+#if MCW_HAS_STD_PRINT
+    std::print(fmt, std::forward<Args>(args)...);
+#elif MCW_HAS_STD_FORMAT
+    std::cout << std::vformat(fmt, std::make_format_args(args...));
+#else
+    // Very basic fallback: just print the format string as-is.
+    (void)sizeof...(args);
+    std::cout << fmt;
+#endif
+}
+
+template <typename... Args>
+inline void println(std::string_view fmt, Args&&... args) {
+#if MCW_HAS_STD_PRINT
+    std::println(fmt, std::forward<Args>(args)...);
+#else
+    print(fmt, std::forward<Args>(args)...);
+    std::cout << '\n';
+#endif
+}
+
+} // namespace mcw

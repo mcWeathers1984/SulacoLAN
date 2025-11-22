@@ -1,0 +1,106 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 20,
+    "patch": 0
+  },
+
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_CXX_STANDARD": "23",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      }
+    },
+
+    {
+      "name": "wsl-clang-debug",
+      "inherits": "base",
+      "displayName": "WSL Clang Debug",
+      "description": "Debug build using clang++ inside WSL",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      },
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_CXX_COMPILER": "clang++"
+      }
+    },
+    {
+      "name": "wsl-clang-release",
+      "inherits": "base",
+      "displayName": "WSL Clang Release",
+      "description": "Release build using clang++ inside WSL",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      },
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_CXX_COMPILER": "clang++"
+      }
+    },
+
+    {
+      "name": "wsl-gcc-debug",
+      "inherits": "base",
+      "displayName": "WSL GCC Debug",
+      "description": "Debug build using g++ inside WSL",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      },
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_C_COMPILER": "gcc",
+        "CMAKE_CXX_COMPILER": "g++"
+      }
+    },
+    {
+      "name": "wsl-gcc-release",
+      "inherits": "base",
+      "displayName": "WSL GCC Release",
+      "description": "Release build using g++ inside WSL",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      },
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_C_COMPILER": "gcc",
+        "CMAKE_CXX_COMPILER": "g++"
+      }
+    }
+  ],
+
+  "buildPresets": [
+    {
+      "name": "wsl-clang-debug",
+      "configurePreset": "wsl-clang-debug"
+    },
+    {
+      "name": "wsl-clang-release",
+      "configurePreset": "wsl-clang-release"
+    },
+    {
+      "name": "wsl-gcc-debug",
+      "configurePreset": "wsl-gcc-debug"
+    },
+    {
+      "name": "wsl-gcc-release",
+      "configurePreset": "wsl-gcc-release"
+    }
+  ]
+}
