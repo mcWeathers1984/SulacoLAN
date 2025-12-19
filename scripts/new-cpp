@@ -1,0 +1,37 @@
+#!/bin/bash
+
+filename="$1"
+owner="${2:-$USER}"
+group="${3:-$USER}"
+perm="${4:-0754}"
+
+if [[ -z "$filename" ]]; then
+    echo "Usage: new-cpp <filename.cpp> [owner] [group] [permissions]"
+    exit 1
+fi
+
+cat > "$filename" <<EOF
+#include <iostream>
+#include <string>
+
+struct WordCounter {
+    std::string name;
+    int count;
+
+    WordCounter() : name("default"), count(0) {}
+    void display() const {
+        std::cout << "Word: " << name << ", Count: " << count << std::endl;
+    }
+};
+
+int main() {
+    WordCounter wc;
+    wc.display();
+    return 0;
+}
+EOF
+
+chown "$owner":"$group" "$filename"
+chmod "$perm" "$filename"
+echo "Created C++ file: $filename with perms: $perm and owner: $owner:$group"
+

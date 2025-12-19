@@ -1,0 +1,111 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# ── CONFIG: tweak these to taste ────────────────────────────────────────────────
+# Folder you want VS Code to open
+CODE_DIR="${1:-$HOME}"        # pass a path as $1 to override
+# Folder you want Explorer to open
+EXPLORER_DIR="${2:-$HOME}"    # pass a path as $2 to override
+# Optional: open a specific VS solution (WSL path). Leave empty for plain VS.
+VS_SOLUTION_PATH="${3:-}"     # e.g. /mnt/c/Users/you/path/to/MyApp.sln
+# ───────────────────────────────────────────────────────────────────────────────
+
+# Convert a WSL path to a Windows path (for .sln, folders, etc.)
+w() { wslpath -w "$1"; }
+
+log() { printf '[*] %s\n' "$*"; }
+warn() { printf '[!] %s\n' "$*" >&2; }
+
+open_code() {
+  log "Opening VS Code on: $CODE_DIR"
+  # 'code' is installed on Windows and exposed to WSL by default if you installed VS Code in Windows
+  if command -v code >/dev/null 2>&1; then
+    code "$CODE_DIR" >/dev/null 2>&1 &
+  else
+    warn "VS Code 'code' launcher not found in WSL PATH; trying Windows path..."
+    /mnt/c/Users/Public/'Desktop'/Code.lnk >/dev/null 2>&1 || \
+    cmd.exe /c start "" "code" "$(w "$CODE_DIR")"
+  fi
+}
+
+open_visual_studio() {
+  # Try common VS2022 IDE paths (Community/Pro/Enterprise)
+  local candidates=(
+    "/mnt/c/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/devenv.exe"
+    "/mnt/c/Program Files/Microsoft Visual Studio/2022/Professional/Common7/IDE/devenv.exe"
+    "/mnt/c/Program Files/Microsoft Visual Studio/2022/Enterprise/Common7/IDE/devenv.exe"
+  )
+  local devenv=""
+  for p in "${candidates[@]}"; do
+    if [ -x "$p" ]; then devenv="$p"; break; fi
+  done
+
+  if [ -z "$devenv" ]; then
+    warn "Could not find Visual Studio 2022 (devenv.exe). Is it installed?"
+    return 0
+  fi
+
+  if [ -n "$VS_SOLUTION_PATH" ]; then
+    log "Opening Visual Studio with solution: $VS_SOLUTION_PATH"
+    "$devenv" "$(w "$VS_SOLUTION_PATH")" >/dev/null 2>&1 &
+  else
+    log "Opening Visual Studio (no solution provided)"
+    "$devenv" >/dev/null 2>&1 &
+  fi
+}
+open_chatgpt() {
+  log "Opening ChatGPT (app if installed, else web)"
+  # Get Windows %LOCALAPPDATA% and convert to a WSL path.
+  # This avoids relying on $USERNAME/$USER and works even if names differ.
+  local localapp_win localapp_wsl chatgpt_exe
+  localapp_win="$(cmd.exe /c "echo %LOCALAPPDATA%" 2>/dev/null | tr -d '\r')"
+  if [ -n "$localapp_win" ]; then
+    localapp_wsl="$(wslpath "$localapp_win" 2>/dev/null || true)"
+  else
+    localapp_wsl=""
+  fi
+
+  if [ -n "$localapp_wsl" ]; then
+    chatgpt_exe="$localapp_wsl/Programs/ChatGPT/ChatGPT.exe"
+    if [ -x "$chatgpt_exe" ]; then
+      "$chatgpt_exe" >/dev/null 2>&1 &
+      return
+    fi
+  fi
+
+  # Fallback: open the website if the native app wasn't found.
+  cmd.exe /c start "" "https://chatgpt.com/" >/dev/null 2>&1 || \
+    warn "Could not open ChatGPT (app or web)."
+}
+open_edge_youtube() {
+  log "Opening Edge to YouTube"
+  # Using the Edge protocol ensures Edge opens directly (even if default browser is different)
+  cmd.exe /c start "" "microsoft-edge:https://www.youtube.com/" >/dev/null 2>&1
+}
+
+open_explorer() {
+  log "Opening File Explorer on: $EXPLORER_DIR"
+  /mnt/c/Windows/explorer.exe "$(w "$EXPLORER_DIR")" >/dev/null 2>&1 &
+}
+
+open_phone_link() {
+  log "Opening Phone Link"
+  # UWP apps can be launched via the AppsFolder moniker
+  # Package family name for Phone Link (Your Phone) is stable:
+  /mnt/c/Windows/explorer.exe "shell:appsFolder\\Microsoft.YourPhone_8wekyb3d8bbwe!App" >/dev/null 2>&1 || \
+  warn "Could not launch Phone Link (Your Phone). Make sure it’s installed/enabled."
+}
+
+main() {
+  open_code
+  open_visual_studio
+  open_chatgpt
+  open_edge_youtube
+  open_explorer
+  open_phone_link
+
+  log "Done. If some apps didn’t launch, see warnings above."
+}
+
+main "$@"
+

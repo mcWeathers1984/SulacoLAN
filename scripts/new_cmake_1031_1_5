@@ -1,0 +1,372 @@
+#!/usr/bin/env bash
+# new_cmake_project.sh  —  CMake repo generator (NO git by default)
+set -euo pipefail
+
+# --------------------------- Config (env-overridable) ---------------------------
+OWNER="${OWNER:-$USER}"
+GROUP="${GROUP:-developers}"
+DIR_PERMS="${DIR_PERMS:-775}"
+FILE_PERMS="${FILE_PERMS:-664}"
+SCRIPT_PERMS="${SCRIPT_PERMS:-775}"
+README_PERMS="${README_PERMS:-664}"
+CPP_STD_DEFAULT="${CPP_STD_DEFAULT:-23}"   # 20 or 23 etc.
+
+usage() {
+  cat <<EOF
+usage: $(basename "$0") <project-name> [--lib|--exe] [--std N] [--tests]
+Defaults: --exe, C++${CPP_STD_DEFAULT}, NO git init.
+After creation, run ./scripts/git-init.sh when you're ready.
+EOF
+}
+
+[[ $# -lt 1 ]] && usage && exit 1
+PROJECT="$1"; shift || true
+
+KIND="exe"
+CPP_STD="${CPP_STD_DEFAULT}"
+WITH_TESTS="no"
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --lib)   KIND="lib" ;;
+    --exe)   KIND="exe" ;;
+    --std)   CPP_STD="${2:-$CPP_STD_DEFAULT}"; shift ;;
+    --tests) WITH_TESTS="yes" ;;
+    *) echo "Unknown option: $1" >&2; usage; exit 2 ;;
+  esac
+  shift
+done
+
+PROJDIR="$(pwd)/$PROJECT"
+[[ -e "$PROJDIR" ]] && { echo "Refusing: $PROJDIR already exists"; exit 2; }
+
+echo "[*] Creating project at: $PROJDIR"
+mkdir -p "$PROJDIR"/{src,include,docs,scripts,tools,third_party,tests,examples,ci,packaging,releases,build,.vscode}
+touch "$PROJDIR"/{include/.keep,tools/.keep,third_party/.keep,examples/.keep,ci/.keep,packaging/.keep,releases/.keep}
+[[ "$WITH_TESTS" == "yes" ]] || rm -rf "$PROJDIR/tests" 2>/dev/null || true
+
+# --------------------------- Dotfiles ---------------------------
+cat > "$PROJDIR/.gitignore" <<'GIT'
+/build/
+/out/
+/dist/
+CMakeFiles/
+CMakeCache.txt
+compile_commands.json
+*.o
+*.obj
+*.exe
+*.dll
+*.so
+*.dylib
+/.vscode/
+/.idea/
+*.log
+.cache/
+/ccache/
+**/target/
+node_modules/
+GIT
+
+cat > "$PROJDIR/.editorconfig" <<'EC'
+root = true
+[*]
+end_of_line = lf
+insert_final_newline = true
+charset = utf-8
+indent_style = space
+indent_size = 2
+trim_trailing_whitespace = true
+
+[*.{c,cc,cpp,h,hpp}]
+indent_size = 2
+
+[Makefile]
+indent_style = tab
+EC
+
+cat > "$PROJDIR/.gitattributes" <<'GA'
+* text=auto eol=lf
+*.sh text eol=lf
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+*.cpp diff=cpp
+*.hpp diff=cpp
+GA
+
+cat > "$PROJDIR/.clang-format" <<'CF'
+BasedOnStyle: LLVM
+IndentWidth: 2
+ColumnLimit: 100
+AllowShortFunctionsOnASingleLine: Empty
+SortIncludes: true
+CF
+
+# --------------------------- CMake ---------------------------
+if [[ "$KIND" == "exe" ]]; then
+cat > "$PROJDIR/CMakeLists.txt" <<CMAKE
+cmake_minimum_required(VERSION 3.20)
+project(${PROJECT} LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD ${CPP_STD})
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+add_executable(\${PROJECT_NAME}
+  src/main.cpp
+)
+target_include_directories(\${PROJECT_NAME} PRIVATE \${CMAKE_SOURCE_DIR}/include)
+CMAKE
+else
+cat > "$PROJDIR/CMakeLists.txt" <<CMAKE
+cmake_minimum_required(VERSION 3.20)
+project(${PROJECT} LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD ${CPP_STD})
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+add_library(\${PROJECT_NAME}
+  src/${PROJECT}.cpp
+)
+target_include_directories(\${PROJECT_NAME} PUBLIC \${CMAKE_SOURCE_DIR}/include)
+CMAKE
+fi
+
+cat > "$PROJDIR/CMakePresets.json" <<'PRESETS'
+{
+  "version": 6,
+  "cmakeMinimumRequired": { "major": 3, "minor": 20 },
+  "configurePresets": [
+    { "name": "base", "hidden": true, "generator": "Ninja", "binaryDir": "${sourceDir}/build/${presetName}" },
+    { "name": "linux-gcc",   "inherits": "base", "cacheVariables": { "CMAKE_C_COMPILER": "gcc",   "CMAKE_CXX_COMPILER": "g++" } },
+    { "name": "linux-clang", "inherits": "base", "cacheVariables": { "CMAKE_C_COMPILER": "clang", "CMAKE_CXX_COMPILER": "clang++" } },
+    { "name": "msvc",        "inherits": "base", "generator": "Ninja Multi-Config", "cacheVariables": { "CMAKE_C_COMPILER": "cl", "CMAKE_CXX_COMPILER": "cl" } }
+  ],
+  "buildPresets": [
+    { "name": "linux-gcc-debug",     "configurePreset": "linux-gcc",   "configuration": "Debug" },
+    { "name": "linux-gcc-release",   "configurePreset": "linux-gcc",   "configuration": "Release" },
+    { "name": "linux-clang-debug",   "configurePreset": "linux-clang", "configuration": "Debug" },
+    { "name": "linux-clang-release", "configurePreset": "linux-clang", "configuration": "Release" },
+    { "name": "msvc-debug",          "configurePreset": "msvc",        "configuration": "Debug" },
+    { "name": "msvc-release",        "configurePreset": "msvc",        "configuration": "Release" }
+  ]
+}
+PRESETS
+
+# --------------------------- Sources ---------------------------
+if [[ "$KIND" == "exe" ]]; then
+cat > "$PROJDIR/src/main.cpp" <<'CPP'
+#include <iostream>
+int main() {
+  std::cout << "hello, sulaco\n";
+  return 0;
+}
+CPP
+else
+cat > "$PROJDIR/src/${PROJECT}.cpp" <<CPP
+// ${PROJECT} library source
+CPP
+cat > "$PROJDIR/include/${PROJECT}.hpp" <<HPP
+#pragma once
+// ${PROJECT} public header
+HPP
+fi
+
+# --------------------------- VS Code ---------------------------
+cat > "$PROJDIR/.vscode/settings.json" <<'VSCSET'
+{
+  "editor.formatOnSave": false,
+  "cmake.configureOnOpen": false,
+  "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools"
+}
+VSCSET
+
+cat > "$PROJDIR/.vscode/tasks.json" <<'VSCTASK'
+{
+  "version": "2.0.0",
+  "tasks": [
+    { "label": "Configure (gcc)", "type": "shell", "command": "cmake --preset linux-gcc" },
+    { "label": "Build (gcc Debug)", "type": "shell", "command": "cmake --build --preset linux-gcc-debug", "dependsOn": "Configure (gcc)" }
+  ]
+}
+VSCTASK
+
+cat > "$PROJDIR/.vscode/launch.json" <<'VSCLAUNCH'
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Launch (gcc Debug)",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/build/linux-gcc-debug/${workspaceFolderBasename}",
+      "cwd": "${workspaceFolder}",
+      "MIMode": "gdb",
+      "miDebuggerPath": "gdb",
+      "preLaunchTask": "Build (gcc Debug)"
+    }
+  ]
+}
+VSCLAUNCH
+
+# --------------------------- scripts: build/develop ---------------------------
+cat > "$PROJDIR/scripts/build.sh" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+preset="${1:-linux-gcc-debug}"
+cmake --preset "$preset"
+cmake --build --preset "$preset" --parallel
+SH
+chmod +x "$PROJDIR/scripts/build.sh"
+
+cat > "$PROJDIR/scripts/develop.sh" <<'DEV'
+#!/usr/bin/env bash
+set -euo pipefail
+
+select_opt() { local PS3="$1"; shift; select o in "$@"; do [ -n "${o:-}" ] && echo "$o" && return; done; }
+
+COMPILER=$(select_opt "Choose compiler: " g++ clang++ msvc)
+CONFIG=$(select_opt "Choose build type: " Debug Release)
+
+case "$COMPILER" in
+  g++)     PRESET="linux-gcc" ;;
+  clang++) PRESET="linux-clang" ;;
+  msvc)    PRESET="msvc" ;;
+esac
+
+echo "[*] Configuring with preset: $PRESET"
+cmake --preset "$PRESET"
+
+echo "[*] Building $CONFIG"
+if [[ "$PRESET" == "msvc" ]]; then
+  cmake --build --preset "msvc-${CONFIG,,}"
+else
+  cmake --build --preset "${PRESET}-${CONFIG,,}" --parallel
+fi
+
+echo "[*] Done. Build dir: build/${PRESET}-${CONFIG,,}"
+DEV
+chmod +x "$PROJDIR/scripts/develop.sh"
+
+# --------------------------- scripts/buglog.sh (writes to root README.md) -----------
+cat > "$PROJDIR/scripts/buglog.sh" <<'BUGLOG'
+#!/usr/bin/env bash
+set -euo pipefail
+
+_resolve() {
+  if command -v readlink >/dev/null 2>&1 && readlink -f / >/dev/null 2>&1; then readlink -f "$1"
+  else python3 - "$1" <<'PY'
+import os, sys; print(os.path.abspath(sys.argv[1]))
+PY
+  fi
+}
+
+SCRIPT_PATH="$(_resolve "$0")"
+SCRIPT_DIR="$(dirname "$SCRIPT_PATH")"
+REPO_ROOT="$(dirname "$SCRIPT_DIR")"
+README_PATH="$REPO_ROOT/README.md"
+PROJECT_NAME="$(basename "$REPO_ROOT")"
+DATE_NOW="$(date '+%Y-%m-%d %H:%M:%S')"
+
+die(){ printf 'Error: %s\n' "$*" >&2; exit 1; }
+have(){ command -v "$1" >/dev/null 2>&1; }
+
+repeat_line(){ printf '%*s' "$1" '' | tr ' ' "$2"; }
+stars(){ local w="$1"; local n=$((w/4)); local s=""; for((i=0;i<n;++i));do s+="*"$'\t';done; echo "${s%$'\t'}"|cut -c1-"$w"; }
+banner(){
+  local n="$1" b w d e
+  if have figlet && figlet -f slant "$n" >/dev/null 2>&1; then b="$(figlet -f slant "$n")"
+  elif have figlet; then b="$(figlet "$n")"
+  else b="$n"; fi
+  w="$(printf '%s\n' "$b" | awk 'NF{last=$0} END{print length(last)}')"; [ -z "$w" ] && w="${#n}"; [ "$w" -lt 1 ] && w=60
+  d="$(repeat_line "$w" -)"; e="$(repeat_line "$w" =)"
+  printf '%s\n%s\n' "$b" "$d"; stars "$w"; printf '%s\n' "$e"
+}
+ensure_readme(){
+  local r="$1" p="$2"
+  if [ ! -f "$r" ]; then
+    umask 002
+    { banner "$p"; printf '\n## Project\n\n**Name:** %s\n\n**Description:** _Add a brief description here._\n\n**Author:** _Your Name_\n\n**Created:** %s\n\n**Version:** 0.1.0\n\n---\n\n## Log\n\n_Entries appended by **scripts/buglog.sh**_\n\n' "$p" "$(date '+%Y-%m-%d')"; } > "$r" || die "create $r"
+    chmod 664 "$r" 2>/dev/null || true
+  else
+    grep -qE '^##[[:space:]]+Log' "$r" || printf '\n---\n\n## Log\n\n_Entries appended by **scripts/buglog.sh**_\n\n' >> "$r"
+  fi
+}
+append(){
+  local r="$1" t="$2" h="$3" b="$4"; local T="$(echo "$t"|tr '[:lower:]' '[:upper:]')"
+  { printf '### [%s] %s — %s\n\n%s\n\n---\n\n' "$DATE_NOW" "$T" "$h" "$b"; } >> "$r" || die "write $r"
+}
+
+valid(){ case "$1" in bug|fix|todo|note|goal) return 0;; *) return 1;; esac; }
+TYPE="${1:-}"; TITLE="${2:-}"; BODY="${3:-}"
+
+if [ -z "$TYPE" ] || [ -z "$TITLE" ]; then
+  while :; do read -rp 'Entry type [bug|fix|todo|note|goal]: ' TYPE; TYPE="${TYPE,,}"; valid "$TYPE" && break; done
+  read -rp 'Short title: ' TITLE
+  echo 'Enter entry body (Ctrl-D to finish):'; BODY="$(cat || true)"
+fi
+[ -n "$BODY" ] || BODY="(no description provided)"
+
+ensure_readme "$README_PATH" "$PROJECT_NAME"
+append "$README_PATH" "$TYPE" "$TITLE" "$BODY"
+echo "Appended $TYPE entry to $README_PATH"
+BUGLOG
+chmod +x "$PROJDIR/scripts/buglog.sh"
+
+# --------------------------- README: seed entry via buglog ---------------------------
+(
+  cd "$PROJDIR/scripts"
+  ./buglog.sh note "Project created" "Initial scaffold with presets and helper scripts."
+)
+
+# --------------------------- Optional Git helper (does NOTHING automatically) -------
+cat > "$PROJDIR/scripts/git-init.sh" <<'GITIT'
+#!/usr/bin/env bash
+set -euo pipefail
+# Usage:
+#   ./scripts/git-init.sh [--branch main] [--remote https://github.com/user/repo.git] [--first-commit "msg"] [--push]
+BRANCH="main"; REMOTE=""; MSG="init: scaffold"; DO_PUSH=0
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --branch) BRANCH="${2:-main}"; shift ;;
+    --remote) REMOTE="${2:-}"; shift ;;
+    --first-commit) MSG="${2:-$MSG}"; shift ;;
+    --push) DO_PUSH=1 ;;
+    *) echo "Unknown arg: $1" >&2; exit 2 ;;
+  esac; shift
+done
+git init
+git checkout -b "$BRANCH" 2>/dev/null || true
+git add .
+git commit -m "$MSG" || true
+if [[ -n "$REMOTE" ]]; then
+  git remote add origin "$REMOTE" 2>/dev/null || git remote set-url origin "$REMOTE"
+  if [[ $DO_PUSH -eq 1 ]]; then
+    git push -u origin "$BRANCH"
+  fi
+fi
+echo "[*] Repo ready. Current remotes:"; git remote -v || true
+GITIT
+chmod +x "$PROJDIR/scripts/git-init.sh"
+
+# --------------------------- Ownership & perms ---------------------------------------
+echo "[*] Setting ownership and permissions..."
+chown -R "$OWNER:$GROUP" "$PROJDIR" 2>/dev/null || true
+find "$PROJDIR" -type d -exec chmod "$DIR_PERMS" {} +
+find "$PROJDIR" -type f -exec chmod "$FILE_PERMS" {} +
+chmod "$SCRIPT_PERMS" "$PROJDIR/scripts/"*.sh
+chmod "$DIR_PERMS" "$PROJDIR/.vscode"
+chmod "$README_PERMS" "$PROJDIR/README.md" 2>/dev/null || true
+chgrp -R "$GROUP" "$PROJDIR" 2>/dev/null || true
+chmod g+s "$PROJDIR" 2>/dev/null || true
+
+echo "[*] Done."
+echo "Next:"
+echo "  cd \"$PROJECT\""
+echo "  ./scripts/develop.sh            # choose compiler + Debug/Release"
+echo "  ./scripts/buglog.sh -i          # append a README log entry"
+echo "  ./scripts/git-init.sh --branch main --remote <url> [--push]   # when ready"
+

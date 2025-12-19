@@ -1,0 +1,29 @@
+cdls() {
+    local ls_opts=()
+    local path=""
+
+    for arg in "$@"; do
+        if [[ "$arg" == -* ]]; then
+            ls_opts+=("$arg")
+        else
+            if [[ -z "$path" ]]; then
+                path="$arg"
+            else
+                echo "cdls: Only one directory path is allowed." >&2
+                return 1
+            fi
+        fi
+    done
+
+    # Use $HOME if no path specified
+    [[ -z "$path" ]] && path="$HOME"
+
+    # Try to change directory
+    if cd "$path"; then
+        ls --color=auto --group-directories-first "${ls_opts[@]}"
+    else
+        echo "cdls: Failed to cd into '$path'" >&2
+        return 1
+    fi
+}
+

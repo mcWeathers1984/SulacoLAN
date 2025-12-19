@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+# win-launch: open VS Code, Visual Studio 2022, Edge (html/url), ChatGPT, and Phone Link from WSL
+# Usage: win-launch "/path/for/code" "/path/or/.sln for VS" "/path/or/url for Edge"
+set -euo pipefail
+
+die() { echo "win-launch: $*" >&2; exit 1; }
+
+# --- arg parsing ---
+[[ $# -eq 3 ]] || die "usage: win-launch <code_path> <vs2022_path_or_sln> <edge_path_or_url>"
+
+CODE_ARG="$1"
+VS_ARG="$2"
+EDGE_ARG="$3"
+
+# Detect if a string looks like a Windows path (C:\..., D:\...)
+is_win_path() {
+  [[ "$1" =~ ^[A-Za-z]:[\\/].* ]]
+}
+
+# Convert Linux path -> Windows path (keeps Windows paths and URLs as-is)
+to_win_path() {
+  local p="$1"
+  if [[ "$p" =~ ^https?:// ]]; then
+    echo "$p"
+  elif is_win_path "$p"; then
+    # normalize backslashes for PowerShell args
+    echo "${p//\//\\}"
+  else
+    # assume Linux/WSL path
+    if [[ -e "$p" ]]; then
+      wslpath -w "$p"
+    else
+      # still try converting; Edge/VS may create or handle non-existent paths
+      wslpath -w "$p" 2>/dev/null || echo "$p"
+    fi
+  fi
+}
+
+# Wrap a PowerShell Start-Process call (no profile, no window flash)
+ps_start() {
+  # $1 is the powershell command (already quoted appropriately)
+  powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -Command "$1" >/dev/null 2>&1 &
+}
+
+# --- prepare paths ---
+CODE_WIN="$(to_win_path "$CODE_ARG")"
+VS_WIN="$(to_win_path "$VS_ARG")"
+EDGE_WIN="$(to_win_path "$EDGE_ARG")"
+
+# --- open VS Code from WSL (preferred: WSL integration) ---
+# If 'code' CLI exists in WSL, use it so the WSL extension attaches properly.
+if command -v code >/dev/null 2>&1; then
+  # code can open files or directories
+  ( code "$CODE_ARG" >/dev/null 2>&1 & )
+else
+  # Fallback: try Windows code.exe via PowerShell
+  ps_start "Start-Process -FilePath 'code' -ArgumentList @('$CODE_WIN')"
+fi
+
+# --- open Visual Studio 2022 (Community/Pro/Enterprise) ---
+# Try 'devenv' on PATH; if not, let Start-Process resolve it by registered app paths.
+ps_start "Start-Process -FilePath 'devenv' -ArgumentList @('$VS_WIN') -ErrorAction SilentlyContinue
+if (-not \$?) {
+  # Common default path (Community); harmless if it doesn't exist
+  \$vs = 'C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\devenv.exe'
+  if (Test-Path \$vs) { Start-Process -FilePath \$vs -ArgumentList @('$VS_WIN') }
+}"
+
+# --- open Microsoft Edge with file path or URL ---
+# Edge handles both local files and http(s) URLs.
+ps_start "Start-Process -FilePath 'msedge' -ArgumentList @('$EDGE_WIN')"
+
+# --- open ChatGPT app if installed; otherwise open chatgpt.com ---
+ps_start "\$pkg = Get-AppxPackage -Name OpenAI.ChatGPT -ErrorAction SilentlyContinue;
+if (\$pkg) {
+  Start-Process ('shell:AppsFolder\' + \$pkg.PackageFamilyName + '!App')
+} else {
+  Start-Process -FilePath 'msedge' -ArgumentList @('https://chatgpt.com/')
+}"
+
+# --- open Phone Link (Your Phone) app ---
+ps_start "\$pkg = Get-AppxPackage -Name Microsoft.YourPhone -ErrorAction SilentlyContinue;
+if (\$pkg) {
+  Start-Process ('shell:AppsFolder\' + \$pkg.PackageFamilyName + '!App')
+} else {
+  # Nothing fatal if it's missing
+  Write-Output 'Phone Link app not installed.'
+}"
+
+# Optional: quick notification on the Linux side
+echo "Launched: VS Code (${CODE_ARG}), VS2022 (${VS_ARG}), Edge (${EDGE_ARG}), ChatGPT, Phone Link"
+

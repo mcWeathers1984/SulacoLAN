@@ -1,0 +1,27 @@
+#!/bin/bash
+
+filename="$1"
+owner="${2:-$USER}"
+group="${3:-$USER}"
+perm="${4:-0644}"
+
+if [[ -z "$filename" ]]; then
+    echo "Usage: new-h <filename.h> [owner] [group] [permissions]"
+    exit 1
+fi
+
+guard_macro=$(basename "$filename" | tr '[:lower:]' '[:upper:]' | sed 's/[^A-Z0-9]/_/g')_H
+
+cat > "$filename" <<EOF
+#ifndef $guard_macro
+#define $guard_macro
+
+// Function declarations go here
+
+#endif // $guard_macro
+EOF
+
+chown "$owner":"$group" "$filename"
+chmod "$perm" "$filename"
+echo "Created header file: $filename with perms: $perm and owner: $owner:$group"
+

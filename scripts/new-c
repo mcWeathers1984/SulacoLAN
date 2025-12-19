@@ -1,0 +1,25 @@
+#!/bin/bash
+
+filename="$1"
+owner="${2:-$USER}"
+group="${3:-$USER}"
+perm="${4:-0754}"
+
+if [[ -z "$filename" ]]; then
+    echo "Usage: new-c <filename.c> [owner] [group] [permissions]"
+    exit 1
+fi
+
+cat > "$filename" <<EOF
+#include <stdio.h>
+
+int main(void) {
+    printf("Hello, world!\\n");
+    return 0;
+}
+EOF
+
+chown "$owner":"$group" "$filename"
+chmod "$perm" "$filename"
+echo "Created C file: $filename with perms: $perm and owner: $owner:$group"
+
