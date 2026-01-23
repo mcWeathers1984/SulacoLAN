@@ -11,7 +11,7 @@ main_choice show_main_menu() {
 
     println("==== Main Menu ====");
     println("  1) Subnet tools");
-    println("  2) Ping tools");
+    println("  2) Ping tools"); 
     println("  0) Quit");
     println("-------------------");
 

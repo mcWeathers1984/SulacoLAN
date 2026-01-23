@@ -1,0 +1,108 @@
+*-----------*-----------*-----------*-----------*                                            |   # of    |  Subnet   |# hosts 0's|   Block   |                                            |  Subnets  |           |per Subnet |   Size    |                                            *===========*===========*===========*===========*                                            0 /8 /16 /24|     0     |     8     |    256    |                                            |    1      |    128    |     7     |    128    |                                            |    2      |    192    |     6     |     64    |                                            |    3      |    224    |     5     |     32    |                                            |    4      |    240    |     4     |     16    |                                            |    5      |    248    |     3     |      8    |                                            |    6      |    252    |     2     |      4    |                                            |    7      |    254    |     1     |      2    |                                            |    8      |    255    |     0     |      1    |                                            *-----------*-----------*-----------*-----------*       
+Find interesting octet
+Find Subnetting row
+Find block size
+
+Subnet mask
+Block size
+Network IP
+Broadcast IP
+First host
+Last host
+Next Subnet
+
+<1> 192.168.10.77/26
+interest oct x
+Row 2 subnetting row
+block size 64
+Subnet mask 255.255.255.192
+Block size  64
+Network IP  192.168.10.64
+BroadcastIP 192.168.10.127
+First host  192.168.10.65
+Last host   192.168.10.126
+Next Subnet 192.168.10.128
+
+<2> 10.4.15.200/20
+          x		4
+    255.255.240.0
+blocksize 16		0 16 32 48 64 80 96 112 128 144 160 176 192 208
+block 0 16
+
+Subnet mask 255.255.240.0
+Block size  16
+Network IP  10.4.0.0
+Broadcast IP10.4.15.255 
+First host  10.4.0.1
+Last host   10.4.15.254
+Next Subnet 10.4.16.0
+
+
+
+
+*-----------*-----------*-----------*-----------*                                            |   # of    |  Subnet   |# hosts 0's|   Block   |                                            |  Subnets  |           |per Subnet |   Size    |                                            *===========*===========*===========*===========*                                            0 /8 /16 /24|     0     |     8     |    256    |                                            |    1      |    128    |     7     |    128    |                                            |    2      |    192    |     6     |     64    |                                            |    3      |    224    |     5     |     32    |<-----                                            |    4      |    240    |     4     |     16    |                                            |    5      |    248    |     3     |      8    |                                            |    6      |    252    |     2     |      4    |                                            |    7      |    254    |     1     |      2    |                                            |    8      |    255    |     0     |      1    |                                            *-----------*-----------*-----------*-----------*    
+<3>   
+172.16.99.50/19
+        ^
+Find interesting octet
+Find Subnetting row -> 3 , 224, 5, 32
+Find block size         32
+11111111.11111111.11100000.00000000
+		0 32 64 96 128
+Block			96-128
+
+Network IP  172.16.96.0
+Broadcast IP 172.16.127.255
+Subnet mask 255.255.224.0
+Block size   32
+First host  172.16.96.1
+Last host 172.16.127.254
+Next Subnet 172.16.128.0
+
+My answers:
+<1>192.168.10.77/26
+Subnet mask 255.255.255.192
+Block size  64
+Network IP  192.168.10.64
+BroadcastIP 192.168.10.127
+First host  192.168.10.65
+Last host   192.168.10.126
+Next Subnet 192.168.10.128
+
+<2>10.4.15.200/20
+Subnet mask 255.255.240.0
+Block size  16
+Network IP  10.4.0.0
+Broadcast IP10.4.15.255 
+First host  10.4.0.1
+Last host   10.4.15.254
+Next Subnet 10.4.16.0
+
+<3>172.16.99.50/19
+Network IP  172.16.96.0
+Broadcast IP 172.16.127.255
+Subnet mask 255.255.224.0
+Block size   32
+First host  172.16.96.1
+Last host 172.16.127.254
+Next Subnet 172.16.128.0
+Okay! I did surprising well on the first three, but I was only able to 'quickly' 
+calculate #3. 
+I had a hiccup on number 1, I made the same mistake as earlier, I picked the wrong
+block range. When I went to check against the app I felt a rush of
+anxiety. But I realized my mistake, it was the same mess up I made
+from earlier...
+Anyway, I went back and figured it out. Then by number three 
+I started to feel a little better about this. I think if I can 
+recall the chart on exam day I will have no problem getting the right
+figures. However, I think I need to do these drills EVERY SINGLE DAY
+until the exam LOL! Because I am far too slow right now.
+
+Anyway, I got home late and it took me about 40 minutes to get these right. 
+I think I am done for the evening. In the morning I think I will plan on 
+doing the rest of these for my morning subnet drills. What do you think?
+Oh by the way I should mention, part of doing this was recalling the chart
+from memory and i think I have it down. I had a talk with my family and politely
+reminded them about my upcoming exams. They agreed they could manage without 
+as much of my help just for the next few weeks and encouraged me to "lock myself in my room lol,(jokingly of course) so I can focus a little more more
+on making sure I am getting my 'study' quota. 

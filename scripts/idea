@@ -1,0 +1,20 @@
+#!/bin/bash
+
+IDEA_FILE="$HOME/IDEAS.txt"
+
+# If no text provided, go interactive:
+if [ $# -eq 0 ]; then
+    echo "Type your idea (Ctrl+D when done):"
+    IDEA_TEXT=$(cat)
+else
+    IDEA_TEXT="$*"
+fi
+
+{
+    echo "------------------------------"
+    date "+%Y-%m-%d %H:%M:%S"
+    echo "$IDEA_TEXT"
+} >> "$IDEA_FILE"
+
+echo "Saved to $IDEA_FILE"
+
