@@ -1,0 +1,4 @@
+Start-Date: 2026-01-01  13:22:41
+Commandline: apt install chrony
+Install: chrony:arm64 (4.6.1-3)
+Remove: systemd-timesyncd:arm64 (257.9-1~deb13u1)

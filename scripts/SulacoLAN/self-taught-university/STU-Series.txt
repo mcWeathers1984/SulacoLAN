@@ -1,0 +1,35 @@
+Self-Taught-University:
+* Home Lab Series
+   Setting up a home lab for learning networking and security, as well as systems and network
+   programming.
+   We will be using this home lab specifically for preparing for the CompTIA Network+ and
+   the CompTIA Security+ certification exams. I am in the process of creating these
+   two series for this channel. 
+
+   We will be building a lab for learning Linux System Administration and Networking.
+   For the Linux series we will be focusing on, well, Linux; so we will have 4 PC's
+   which will all have some Linux distro or Windows-Subsystem for Linux.
+
+   In order to get as much Linux exposure, we will use distributions with the APT and
+   the DNF package managers. So we will use Debian and Fedora.
+
+   Here are the machines I will be using:
+
+   *HP Slim Desktop PC -Debian with XFCE
+   *Raspberry Pi 5(8GB)-Raspian
+   *HP Slim Desktop PC -Fedora CLI
+   *HP Victus-WSL-Debian-
+
+   Linux+ Objectives
+
+   Network+_ Objectives
+    Raspberry Pi - Router
+                 -DNS
+                 -SSH
+                 -NAT
+                 -DHCP
+                 
+   For each we will keep all the machines lean and clean
+   So we can easily do reinstallations if neeeded
+   
+
