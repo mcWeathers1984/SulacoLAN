@@ -1,0 +1,187 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Hicks-native Makefile project generator
+# - clang / clang++ only
+# - C: c18
+# - C++: c++11 / c++20 / c++23
+# - Optional deps: none | math | ncurses | math+ncurses
+# - Optional C++ stdlib: libstdc++ | libc++
+# - Safe Makefile TAB generation
+# - develop.sh helper
+
+die() { echo "ERROR: $*" >&2; exit 1; }
+warn() { echo "WARN: $*" >&2; }
+
+require_clang() {
+  command -v clang   >/dev/null || die "clang not installed (sudo apt install clang)"
+  command -v clang++ >/dev/null || die "clang++ not installed (sudo apt install clang)"
+}
+
+is_valid_name() {
+  [[ "$1" =~ ^[a-z][a-z0-9_]*$ ]]
+}
+
+choose() {
+  local var="$1" msg="$2" def="$3" opts="$4" val
+  while true; do
+    read -rp "$msg ($opts) [$def]: " val
+    val="${val:-$def}"
+    for o in $opts; do
+      [[ "$val" == "$o" ]] && { printf -v "$var" "%s" "$val"; return; }
+    done
+    echo "Invalid choice."
+  done
+}
+
+deps_to_libs() {
+  case "$1" in
+    none) echo "" ;;
+    math) echo "-lm" ;;
+    ncurses) echo "-lncurses" ;;
+    math+ncurses) echo "-lm -lncurses" ;;
+    *) die "Unknown deps" ;;
+  esac
+}
+
+write_makefile() {
+  local proj="$1" lang="$2" std="$3" deps="$4" stdlib="$5"
+  local ext src cc libs
+  [[ "$lang" == "c" ]] && ext=c || ext=cpp
+  src="src/$proj.$ext"
+  libs="$(deps_to_libs "$deps")"
+  cc="clang"
+  [[ "$lang" == "cpp" ]] && cc="clang++"
+
+  local stdlib_flags="" stdlib_ld=""
+  if [[ "$lang" == "cpp" && "$stdlib" == "libc++" ]]; then
+    stdlib_flags="-stdlib=libc++"
+    stdlib_ld="-lc++abi"
+  fi
+
+  {
+    printf "# Auto-generated Makefile for %s\n\n" "$proj"
+    printf "PROJECT := %s\n" "$proj"
+    printf "CC := %s\n" "$cc"
+    printf "STD := %s\n\n" "$std"
+    printf "SRC := %s\n" "$src"
+    printf "INC := include\n"
+    printf "DBG := bin/debug/%s\n" "$proj"
+    printf "REL := bin/release/%s\n\n" "$proj"
+
+    printf "CFLAGS := -I\$(INC) -Wall -Wextra -Wpedantic %s\n" "$stdlib_flags"
+    printf "DBGFLAGS := -O0 -g3 -DDEBUG -fno-omit-frame-pointer\n"
+    printf "RELFLAGS := -O2 -DNDEBUG\n"
+    printf "LDFLAGS := %s\n" "$stdlib_flags"
+    printf "LDLIBS := %s %s\n\n" "$libs" "$stdlib_ld"
+
+    printf "all: debug\n\n"
+
+    printf "debug:\n"
+    printf "\tmkdir -p bin/debug\n"
+    printf "\t\$(CC) -std=\$(STD) \$(CFLAGS) \$(DBGFLAGS) -o \$(DBG) \$(SRC) \$(LDFLAGS) \$(LDLIBS)\n\n"
+
+    printf "release:\n"
+    printf "\tmkdir -p bin/release\n"
+    printf "\t\$(CC) -std=\$(STD) \$(CFLAGS) \$(RELFLAGS) -o \$(REL) \$(SRC) \$(LDFLAGS) \$(LDLIBS)\n\n"
+
+    printf "run-debug: debug\n"
+    printf "\t./\$(DBG)\n\n"
+
+    printf "run-release: release\n"
+    printf "\t./\$(REL)\n\n"
+
+    printf "clean:\n"
+    printf "\trm -rf bin\n"
+  } > Makefile
+}
+
+write_develop_sh() {
+  cat > develop.sh <<'EOS'
+#!/usr/bin/env bash
+set -e
+case "$1" in
+  build-debug) make debug ;;
+  build-release) make release ;;
+  run-debug) make run-debug ;;
+  run-release) make run-release ;;
+  clean) make clean ;;
+  note)
+    shift
+    printf "\n## %s\n%s\n" "$(date)" "$*" >> README.md
+    ;;
+  *) echo "Usage: build-debug | build-release | run-debug | run-release | clean | note" ;;
+esac
+EOS
+  chmod +x develop.sh
+}
+
+write_cpp_template() {
+  local proj="$1" std="$2"
+  {
+    echo '#include <iostream>'
+    [[ "$std" == "c++23" ]] && {
+      echo '#include <format>'
+      echo '#include <print>'
+    }
+    echo
+    echo "int main() {"
+    echo "  std::cout << \"Hello from $proj\" << std::endl;"
+    if [[ "$std" == "c++23" ]]; then
+      echo "  auto s = std::format(\"{} + {} = {}\", 2, 3, 5);"
+      echo "  std::print(\"{}\\n\", s);"
+    fi
+    echo "}"
+  } > "src/$proj.cpp"
+}
+
+write_c_template() {
+  local proj="$1"
+  cat > "src/$proj.c" <<EOF
+#include <stdio.h>
+int main(void) {
+  puts("Hello from $proj");
+}
+EOF
+}
+
+### MAIN ###
+
+require_clang
+
+proj="${1:-}"
+lang="${2:-}"
+
+[[ -z "$proj" || -z "$lang" ]] && die "Usage: new_mkfile_proj_generator <name> <c|cpp>"
+
+is_valid_name "$proj" || die "Invalid project name"
+
+choose deps "Dependencies" "none" "none math ncurses math+ncurses"
+
+if [[ "$lang" == "c" ]]; then
+  std="c18"
+  stdlib=""
+else
+  choose std "C++ standard" "c++20" "c++11 c++20 c++23"
+  choose stdlib "C++ stdlib" "libstdc++" "libstdc++ libc++"
+fi
+
+mkdir "$proj"
+cd "$proj"
+mkdir -p src include bin/debug bin/release
+
+[[ "$lang" == "c" ]] && write_c_template "$proj"
+[[ "$lang" == "cpp" ]] && write_cpp_template "$proj" "$std"
+
+write_makefile "$proj" "$lang" "$std" "$deps" "$stdlib"
+write_develop_sh
+
+cat > README.md <<EOF
+# $proj
+Language: $lang
+Standard: $std
+Deps: $deps
+EOF
+
+echo "Project '$proj' created successfully."
+
