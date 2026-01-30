@@ -1,0 +1,663 @@
+#!/usr/bin/env bash
+# new_makefile_project_generator.sh
+# Interactive Makefile project generator for C (clang) / C++ (clang++)
+set -euo pipefail
+
+# -----------------------------
+# Globals (avoid nounset traps)
+# -----------------------------
+LIBS=""            # must be defined early (set -u)
+CPP23_HAS_FORMAT="n/a"
+CPP23_HAS_PRINT="n/a"
+CPP23_NOTES=""
+
+# -----------------------------
+# Helpers
+# -----------------------------
+die() { echo "ERROR: $*" >&2; exit 1; }
+have_cmd() { command -v "$1" >/dev/null 2>&1; }
+
+sanitize_name() {
+  local raw="$1"
+  raw="${raw// /_}"
+  raw="$(echo "$raw" | tr -cd '[:alnum:]_-')"
+  [[ -n "$raw" ]] || die "Project name became empty after sanitization."
+  [[ "${raw:0:1}" != "-" ]] || die "Project name cannot start with '-'."
+  echo "$raw"
+}
+
+prompt() {
+  local msg="$1"
+  local default="${2-}"
+  local ans=""
+  if [[ -n "$default" ]]; then
+    read -r -p "$msg [$default]: " ans
+    echo "${ans:-$default}"
+  else
+    read -r -p "$msg: " ans
+    echo "$ans"
+  fi
+}
+
+prompt_yesno() {
+  local msg="$1"
+  local default="${2:-y}" # y/n
+  local ans=""
+  while true; do
+    read -r -p "$msg (y/n) [$default]: " ans
+    ans="${ans:-$default}"
+    case "$ans" in
+      y|Y) echo "y"; return 0;;
+      n|N) echo "n"; return 0;;
+      *) echo "Please enter y or n." >&2;;
+    esac
+  done
+}
+
+# IMPORTANT: Menu text must go to STDERR so it remains visible even when captured via $(...)
+prompt_choice() {
+  local msg="$1"
+  local default_idx="$2"
+  shift 2
+  local options=("$@")
+  local ans=""
+
+  while true; do
+    echo "$msg" >&2
+    for i in "${!options[@]}"; do
+      printf "  %d) %s\n" "$((i+1))" "${options[$i]}" >&2
+    done
+
+    read -r -p "Select (1-${#options[@]}) [$default_idx]: " ans
+    ans="${ans:-$default_idx}"
+
+    [[ "$ans" =~ ^[0-9]+$ ]] || { echo "Enter a number." >&2; continue; }
+    (( ans >= 1 && ans <= ${#options[@]} )) || { echo "Out of range." >&2; continue; }
+
+    echo "${options[$((ans-1))]}"
+    return 0
+  done
+}
+
+detect_pkg_mgr() {
+  if have_cmd apt-get; then echo "apt"
+  elif have_cmd dnf; then echo "dnf"
+  elif have_cmd dnf5; then echo "dnf"
+  else echo "none"
+  fi
+}
+
+install_deps_best_effort() {
+  local lang="$1" # c or cpp
+  local pmgr
+  pmgr="$(detect_pkg_mgr)"
+  [[ "$pmgr" != "none" ]] || die "No supported package manager found (apt/dnf). Install deps manually."
+
+  echo "Installing dependencies via $pmgr (best effort; may prompt for sudo)..."
+  if [[ "$pmgr" == "apt" ]]; then
+    sudo apt-get update -y
+    # clang + make + ncurses headers; libc++ optional for better C++23 coverage
+    if [[ "$lang" == "c" ]]; then
+      sudo apt-get install -y clang make libncurses-dev
+    else
+      sudo apt-get install -y clang make libncurses-dev libc++-dev libc++abi-dev || true
+      # If libc++ packages are unavailable, clang++ can still use libstdc++.
+    fi
+  else
+    # Fedora
+    if [[ "$lang" == "c" ]]; then
+      sudo dnf -y install clang make ncurses-devel
+    else
+      sudo dnf -y install clang make ncurses-devel libcxx libcxx-devel libcxxabi libcxxabi-devel || true
+    fi
+  fi
+}
+
+check_ncurses_headers() {
+  local compiler="$1"  # clang or clang++
+  local lang_mode="$2" # c or c++
+  local tmpdir
+  tmpdir="$(mktemp -d)"
+  cat > "$tmpdir/t.c" <<'EOF'
+#include <ncurses.h>
+int main(void){ return 0; }
+EOF
+  if ! "$compiler" -x "$lang_mode" "$tmpdir/t.c" -c -o "$tmpdir/t.o" >/dev/null 2>&1; then
+    rm -rf "$tmpdir"
+    return 1
+  fi
+  rm -rf "$tmpdir"
+  return 0
+}
+
+probe_cpp23_feature() {
+  # args: compiler, code
+  local compiler="$1"
+  local code="$2"
+  local tmpdir
+  tmpdir="$(mktemp -d)"
+  cat > "$tmpdir/t.cpp" <<<"$code"
+  if "$compiler" -std=c++23 "$tmpdir/t.cpp" -c -o "$tmpdir/t.o" >/dev/null 2>&1; then
+    rm -rf "$tmpdir"
+    echo "yes"
+  else
+    rm -rf "$tmpdir"
+    echo "no"
+  fi
+}
+
+# -----------------------------
+# Interactive flow
+# -----------------------------
+echo "=== New Makefile Project Generator (clang/clang++) ==="
+
+PROJ_NAME_RAW="$(prompt "Project name (folder/target name)" "my_project")"
+PROJ_NAME="$(sanitize_name "$PROJ_NAME_RAW")"
+
+OUT_PATH_DEFAULT="./$PROJ_NAME"
+OUT_PATH="$(prompt "Output path" "$OUT_PATH_DEFAULT")"
+[[ ! -e "$OUT_PATH" ]] || die "Output path already exists: $OUT_PATH"
+
+DESC="$(prompt "Short description for README.md" "TODO: description")"
+
+LANG_CHOICE="$(prompt_choice "Select language" 2 "C" "C++")"
+if [[ "$LANG_CHOICE" == "C" ]]; then
+  LANG="c"
+  STD_CHOICE="$(prompt_choice "Select C standard" 2 "c99 (legacy)" "c18 (default)")"
+  [[ "$STD_CHOICE" == "c99 (legacy)" ]] && STD="c99" || STD="c18"
+else
+  LANG="cpp"
+  STD_CHOICE="$(prompt_choice "Select C++ standard" 3 "c++11" "c++20" "c++23 (default)")"
+  case "$STD_CHOICE" in
+    c++11) STD="c++11" ;;
+    c++20) STD="c++20" ;;
+    *)     STD="c++23" ;;
+  esac
+fi
+
+DEPS_CHOICE="$(prompt_choice "Select libraries to link" 4 "none" "math" "ncurses" "math+ncurses")"
+case "$DEPS_CHOICE" in
+  none)          LIBS="" ;;
+  math)          LIBS="-lm" ;;
+  ncurses)       LIBS="-lncurses" ;;
+  math+ncurses)  LIBS="-lm -lncurses" ;;
+  *)             LIBS="" ;;
+esac
+
+DO_CHECK="$(prompt_yesno "Check required tools/headers before generating?" "y")"
+DO_INSTALL="n"
+if [[ "$DO_CHECK" == "y" ]]; then
+  DO_INSTALL="$(prompt_yesno "If missing, attempt install via apt/dnf?" "n")"
+fi
+
+# -----------------------------
+# Dependency handling
+# -----------------------------
+if [[ "$DO_INSTALL" == "y" ]]; then
+  install_deps_best_effort "$LANG"
+fi
+
+if [[ "$DO_CHECK" == "y" ]]; then
+  if [[ "$LANG" == "c" ]]; then
+    have_cmd clang || die "clang not found. Install clang."
+    if [[ "$DEPS_CHOICE" == "ncurses" || "$DEPS_CHOICE" == "math+ncurses" ]]; then
+      check_ncurses_headers clang c || die "ncurses headers not found. Install libncurses-dev / ncurses-devel."
+    fi
+  else
+    have_cmd clang++ || die "clang++ not found. Install clang."
+    if [[ "$DEPS_CHOICE" == "ncurses" || "$DEPS_CHOICE" == "math+ncurses" ]]; then
+      check_ncurses_headers clang++ c++ || die "ncurses headers not found. Install libncurses-dev / ncurses-devel."
+    fi
+  fi
+fi
+
+# C++23 feature probes (real world “requirements” are stdlib implementations)
+CPP23_HAS_FORMAT="n/a"
+CPP23_HAS_PRINT="n/a"
+CPP23_NOTES=""
+
+if [[ "$LANG" == "cpp" && "$STD" == "c++23" ]]; then
+  if [[ "$DO_CHECK" == "y" ]]; then
+    CPP23_HAS_FORMAT="$(probe_cpp23_feature clang++ \
+'#include <format>
+#include <string>
+int main(){ auto s = std::format("x={}", 1); (void)s; }')"
+
+    CPP23_HAS_PRINT="$(probe_cpp23_feature clang++ \
+'#include <print>
+int main(){ std::print("hello {}\n", 123); }')"
+
+    if [[ "$CPP23_HAS_FORMAT" == "no" ]]; then
+      CPP23_NOTES+="\n- std::format probe: FAILED (your standard library likely lacks <format>)."
+      CPP23_NOTES+="\n  Fix: upgrade toolchain/stdlib (libc++ or libstdc++)."
+    else
+      CPP23_NOTES+="\n- std::format probe: OK"
+    fi
+
+    if [[ "$CPP23_HAS_PRINT" == "no" ]]; then
+      CPP23_NOTES+="\n- std::print probe: FAILED (common; <print> not universally available yet)."
+      CPP23_NOTES+="\n  Workaround: iostream/printf, or fmtlib, or upgrade toolchain."
+    else
+      CPP23_NOTES+="\n- std::print probe: OK"
+    fi
+  else
+    CPP23_NOTES+="\n- C++23 selected but checks were skipped; <format>/<print> support not verified."
+  fi
+fi
+
+# -----------------------------
+# Generate project skeleton
+# -----------------------------
+echo
+echo "Generating project..."
+echo "  Name : $PROJ_NAME"
+echo "  Path : $OUT_PATH"
+echo "  Lang : $LANG"
+echo "  Std  : $STD"
+echo "  Libs : ${LIBS:-<none>}"
+
+mkdir -p "$OUT_PATH"/{src,include,bin/debug,bin/release,build/debug,build/release}
+
+if [[ "$LANG" == "c" ]]; then
+  SRC_EXT="c"
+  HDR_EXT="h"
+  MAIN_FILE="main.c"
+  PROJ_SRC="$PROJ_NAME.c"
+  PROJ_HDR="$PROJ_NAME.h"
+  COMPILER_VAR="CC"
+  LINKER_VAR="CC"
+  COMPILER_DEFAULT="clang"
+  LINKER_DEFAULT="clang"
+  STD_FLAG="-std=$STD"
+else
+  SRC_EXT="cpp"
+  HDR_EXT="hpp"
+  MAIN_FILE="main.cpp"
+  PROJ_SRC="$PROJ_NAME.cpp"
+  PROJ_HDR="$PROJ_NAME.hpp"
+  COMPILER_VAR="CXX"
+  LINKER_VAR="CXX"
+  COMPILER_DEFAULT="clang++"
+  LINKER_DEFAULT="clang++"
+  STD_FLAG="-std=$STD"
+fi
+
+# README
+cat > "$OUT_PATH/README.md" <<EOF
+# $PROJ_NAME
+
+$DESC
+
+## Build
+
+- \`make debug\`
+- \`make release\`
+- \`make run-debug\`
+- \`make run-release\`
+- \`make clean\`
+
+Or: \`./develop.sh\` for an interactive menu.
+
+## Configuration
+
+- Language: $LANG
+- Standard: $STD
+- Linked libs: ${LIBS:-none}
+- Compiler defaults: $COMPILER_DEFAULT / $LINKER_DEFAULT
+
+EOF
+
+if [[ "$LANG" == "cpp" && "$STD" == "c++23" ]]; then
+  cat >> "$OUT_PATH/README.md" <<EOF
+## C++23 Library Feature Probe (clang++)
+
+- <format> (std::format): $CPP23_HAS_FORMAT
+- <print>  (std::print):  $CPP23_HAS_PRINT
+$CPP23_NOTES
+
+EOF
+fi
+
+cat >> "$OUT_PATH/README.md" <<'EOF'
+## Bug Log
+<!-- APPEND_LOG_BELOW -->
+EOF
+
+# Makefile
+cat > "$OUT_PATH/Makefile" <<EOF
+# Makefile for $PROJ_NAME
+# Generated by new_makefile_project_generator.sh
+
+PROJ_NAME := $PROJ_NAME
+
+# Tools (override e.g. make CXX=clang++ or make CC=clang)
+$COMPILER_VAR ?= $COMPILER_DEFAULT
+$LINKER_VAR ?= $LINKER_DEFAULT
+
+# Directories
+SRC_DIR := src
+INC_DIR := include
+BUILD_DEBUG_DIR := build/debug
+BUILD_RELEASE_DIR := build/release
+BIN_DEBUG_DIR := bin/debug
+BIN_RELEASE_DIR := bin/release
+
+# Files
+SOURCES := \$(SRC_DIR)/$MAIN_FILE \$(SRC_DIR)/$PROJ_SRC
+
+# Flags
+WARN := -Wall -Wextra -Wpedantic
+INCLUDES := -I\$(INC_DIR)
+STD_FLAG := $STD_FLAG
+
+# Libraries
+LIBS := $LIBS
+
+DEBUG_FLAGS := -O0 -g3 -DDEBUG
+RELEASE_FLAGS := -O2 -DNDEBUG
+
+CFLAGS_DEBUG := \$(STD_FLAG) \$(WARN) \$(INCLUDES) \$(DEBUG_FLAGS)
+CFLAGS_RELEASE := \$(STD_FLAG) \$(WARN) \$(INCLUDES) \$(RELEASE_FLAGS)
+
+CXXFLAGS_DEBUG := \$(STD_FLAG) \$(WARN) \$(INCLUDES) \$(DEBUG_FLAGS)
+CXXFLAGS_RELEASE := \$(STD_FLAG) \$(WARN) \$(INCLUDES) \$(RELEASE_FLAGS)
+
+DEBUG_EXE := \$(BIN_DEBUG_DIR)/\$(PROJ_NAME)
+RELEASE_EXE := \$(BIN_RELEASE_DIR)/\$(PROJ_NAME)
+
+DEBUG_OBJS := \$(patsubst \$(SRC_DIR)/%.$SRC_EXT,\$(BUILD_DEBUG_DIR)/%.o,\$(SOURCES))
+RELEASE_OBJS := \$(patsubst \$(SRC_DIR)/%.$SRC_EXT,\$(BUILD_RELEASE_DIR)/%.o,\$(SOURCES))
+
+.PHONY: all debug release clean run-debug run-release info
+
+all: debug
+
+info:
+\t@echo "Project  : \$(PROJ_NAME)"
+\t@echo "SOURCES  : \$(SOURCES)"
+\t@echo "LIBS     : \$(LIBS)"
+\t@echo "STD_FLAG : \$(STD_FLAG)"
+\t@echo "Compiler : \$($COMPILER_VAR)"
+\t@echo "Linker   : \$($LINKER_VAR)"
+
+debug: \$(DEBUG_EXE)
+release: \$(RELEASE_EXE)
+
+\$(DEBUG_EXE): \$(DEBUG_OBJS) | \$(BIN_DEBUG_DIR)
+\t\$($LINKER_VAR) \$(DEBUG_OBJS) -o \$@ \$(LIBS)
+
+\$(RELEASE_EXE): \$(RELEASE_OBJS) | \$(BIN_RELEASE_DIR)
+\t\$($LINKER_VAR) \$(RELEASE_OBJS) -o \$@ \$(LIBS)
+
+\$(BUILD_DEBUG_DIR)/%.o: \$(SRC_DIR)/%.$SRC_EXT | \$(BUILD_DEBUG_DIR)
+EOF
+
+if [[ "$LANG" == "c" ]]; then
+  cat >> "$OUT_PATH/Makefile" <<'EOF'
+	$(CC) $(CFLAGS_DEBUG) -c $< -o $@
+EOF
+else
+  cat >> "$OUT_PATH/Makefile" <<'EOF'
+	$(CXX) $(CXXFLAGS_DEBUG) -c $< -o $@
+EOF
+fi
+
+cat >> "$OUT_PATH/Makefile" <<EOF
+
+\$(BUILD_RELEASE_DIR)/%.o: \$(SRC_DIR)/%.$SRC_EXT | \$(BUILD_RELEASE_DIR)
+EOF
+
+if [[ "$LANG" == "c" ]]; then
+  cat >> "$OUT_PATH/Makefile" <<'EOF'
+	$(CC) $(CFLAGS_RELEASE) -c $< -o $@
+EOF
+else
+  cat >> "$OUT_PATH/Makefile" <<'EOF'
+	$(CXX) $(CXXFLAGS_RELEASE) -c $< -o $@
+EOF
+fi
+
+cat >> "$OUT_PATH/Makefile" <<'EOF'
+
+$(BIN_DEBUG_DIR):
+	mkdir -p $(BIN_DEBUG_DIR)
+
+$(BIN_RELEASE_DIR):
+	mkdir -p $(BIN_RELEASE_DIR)
+
+$(BUILD_DEBUG_DIR):
+	mkdir -p $(BUILD_DEBUG_DIR)
+
+$(BUILD_RELEASE_DIR):
+	mkdir -p $(BUILD_RELEASE_DIR)
+
+clean:
+	rm -rfv bin/debug/* bin/release/* build/debug/* build/release/*
+
+run-debug: debug
+	$(DEBUG_EXE)
+
+run-release: release
+	$(RELEASE_EXE)
+EOF
+
+# Header + source templates
+if [[ "$LANG" == "c" ]]; then
+  cat > "$OUT_PATH/include/$PROJ_HDR" <<EOF
+#pragma once
+#include <stdint.h>
+int ${PROJ_NAME}_run(void);
+EOF
+
+  {
+    echo "#include \"$PROJ_HDR\""
+    echo "#include <stdio.h>"
+    if [[ "$DEPS_CHOICE" == "math" || "$DEPS_CHOICE" == "math+ncurses" ]]; then
+      echo "#include <math.h>"
+    fi
+    if [[ "$DEPS_CHOICE" == "ncurses" || "$DEPS_CHOICE" == "math+ncurses" ]]; then
+      echo "#include <ncurses.h>"
+    fi
+    echo
+    echo "int ${PROJ_NAME}_run(void)"
+    echo "{"
+    if [[ "$DEPS_CHOICE" == "ncurses" || "$DEPS_CHOICE" == "math+ncurses" ]]; then
+      echo "  initscr();"
+      echo "  cbreak();"
+      echo "  noecho();"
+      echo "  mvprintw(1, 2, \"Project: %s\", \"$PROJ_NAME\");"
+      if [[ "$DEPS_CHOICE" == "math+ncurses" ]]; then
+        echo "  double v = sqrt(144.0);"
+        echo "  mvprintw(2, 2, \"sqrt(144.0) = %.2f\", v);"
+      fi
+      echo "  mvprintw(4, 2, \"Press any key to exit...\");"
+      echo "  refresh();"
+      echo "  getch();"
+      echo "  endwin();"
+      echo "  return 0;"
+      echo "}"
+    else
+      if [[ "$DEPS_CHOICE" == "math" ]]; then
+        echo "  double v = sqrt(144.0);"
+        echo "  printf(\"Project: %s\\n\", \"$PROJ_NAME\");"
+        echo "  printf(\"sqrt(144.0) = %.2f\\n\", v);"
+        echo "  return 0;"
+        echo "}"
+      else
+        echo "  printf(\"Hello from $PROJ_NAME\\n\");"
+        echo "  return 0;"
+        echo "}"
+      fi
+    fi
+  } > "$OUT_PATH/src/$PROJ_SRC"
+
+  cat > "$OUT_PATH/src/$MAIN_FILE" <<EOF
+#include "$PROJ_HDR"
+int main(void) { return ${PROJ_NAME}_run(); }
+EOF
+
+else
+  cat > "$OUT_PATH/include/$PROJ_HDR" <<EOF
+#pragma once
+namespace $PROJ_NAME {
+  int run();
+}
+EOF
+
+  {
+    echo "#include \"$PROJ_HDR\""
+    if [[ "$DEPS_CHOICE" == "math" || "$DEPS_CHOICE" == "math+ncurses" ]]; then
+      echo "#include <cmath>"
+    fi
+    if [[ "$DEPS_CHOICE" == "ncurses" || "$DEPS_CHOICE" == "math+ncurses" ]]; then
+      echo "#include <ncurses.h>"
+    fi
+    echo
+    echo "#if __has_include(<format>)"
+    echo "  #include <format>"
+    echo "  #define HAS_FORMAT 1"
+    echo "#else"
+    echo "  #define HAS_FORMAT 0"
+    echo "#endif"
+    echo
+    echo "#include <string>"
+    echo
+    echo "namespace $PROJ_NAME {"
+    echo
+    echo "int run()"
+    echo "{"
+    if [[ "$DEPS_CHOICE" == "ncurses" || "$DEPS_CHOICE" == "math+ncurses" ]]; then
+      echo "  initscr();"
+      echo "  cbreak();"
+      echo "  noecho();"
+      echo "  mvprintw(1, 2, \"Project: %s\", \"$PROJ_NAME\");"
+      if [[ "$DEPS_CHOICE" == "math+ncurses" ]]; then
+        echo "  double v = std::sqrt(144.0);"
+        echo "  if (HAS_FORMAT) {"
+        echo "    auto msg = std::format(\"sqrt(144.0) = {:.2f}\", v);"
+        echo "    mvprintw(2, 2, \"%s\", msg.c_str());"
+        echo "  } else {"
+        echo "    mvprintw(2, 2, \"sqrt(144.0) = %.2f\", v);"
+        echo "  }"
+      else
+        echo "  mvprintw(2, 2, \"ncurses ok\");"
+      fi
+      echo "  mvprintw(4, 2, \"Press any key to exit...\");"
+      echo "  refresh();"
+      echo "  getch();"
+      echo "  endwin();"
+      echo "  return 0;"
+      echo "}"
+    else
+      if [[ "$DEPS_CHOICE" == "math" ]]; then
+        echo "  double v = std::sqrt(144.0);"
+        echo "  (void)v;"
+        echo "  return 0;"
+        echo "}"
+      else
+        echo "  return 0;"
+        echo "}"
+      fi
+    fi
+    echo
+    echo "} // namespace $PROJ_NAME"
+  } > "$OUT_PATH/src/$PROJ_SRC"
+
+  cat > "$OUT_PATH/src/$MAIN_FILE" <<EOF
+#include "$PROJ_HDR"
+int main() { return $PROJ_NAME::run(); }
+EOF
+fi
+
+# develop.sh
+cat > "$OUT_PATH/develop.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+PROJ_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+README="$PROJ_ROOT/README.md"
+
+proj_name() {
+  grep -E '^PROJ_NAME\s*:=' "$PROJ_ROOT/Makefile" | awk '{print $3}'
+}
+
+have_exe() { [[ -x "$1" ]]; }
+
+append_log() {
+  local kind="$1"
+  local entry="$2"
+  local ts
+  ts="$(date '+%Y-%m-%d %H:%M:%S')"
+  printf -- "- [%s] **%s**: %s\n" "$ts" "$kind" "$entry" >> "$README"
+  echo "Appended to README bug log."
+}
+
+build_debug()   { make -C "$PROJ_ROOT" debug; }
+build_release() { make -C "$PROJ_ROOT" release; }
+clean_all()     { make -C "$PROJ_ROOT" clean; }
+
+run_debug() {
+  local p exe
+  p="$(proj_name)"
+  exe="$PROJ_ROOT/bin/debug/$p"
+  if ! have_exe "$exe"; then
+    echo "No debug executable found. Building debug..."
+    build_debug
+  fi
+  "$exe"
+}
+
+run_release() {
+  local p exe
+  p="$(proj_name)"
+  exe="$PROJ_ROOT/bin/release/$p"
+  if ! have_exe "$exe"; then
+    echo "No release executable found. Building release..."
+    build_release
+  fi
+  "$exe"
+}
+
+menu() {
+  cat <<'MENU'
+
+develop.sh menu
+1) build-debug
+2) build-release
+3) clean
+4) run-debug
+5) run-release
+6) append log entry (bug|fix|todo|note)
+7) exit
+MENU
+}
+
+while true; do
+  menu
+  read -r -p "Select> " choice
+  case "$choice" in
+    1) build_debug;;
+    2) build_release;;
+    3) clean_all;;
+    4) run_debug;;
+    5) run_release;;
+    6)
+      read -r -p "Type (bug|fix|todo|note)> " kind
+      case "$kind" in bug|fix|todo|note) ;; *) echo "Invalid type."; continue;; esac
+      read -r -p "Entry> " entry
+      [[ -n "${entry// }" ]] || { echo "Empty entry."; continue; }
+      append_log "$kind" "$entry"
+      ;;
+    7) exit 0;;
+    *) echo "Invalid selection.";;
+  esac
+done
+EOF
+chmod +x "$OUT_PATH/develop.sh"
+
+echo
+echo "Done."
+echo "Next:"
+echo "  cd \"$OUT_PATH\""
+echo "  ./develop.sh"
+  
